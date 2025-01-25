@@ -1,100 +1,76 @@
-from flask import Flask, request, jsonify
-import requests
 import os
-import hmac
-import hashlib
-import time
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext
+import json
+import requests
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 
-# 🔹 إعداد Flask
+# تحميل المتغيرات من .env
+load_dotenv()
+
 app = Flask(__name__)
 
-# 🔹 تحميل المتغيرات من البيئة
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # توكن بوت Telegram
-ALIEXPRESS_APP_KEY = os.getenv("ALIEXPRESS_APP_KEY")  # مفتاح AliExpress API
-ALIEXPRESS_APP_SECRET = os.getenv("ALIEXPRESS_APP_SECRET")  # السر السري لـ AliExpress API
-ALIEXPRESS_API_URL = os.getenv("ALIEXPRESS_API_URL")  # رابط AliExpress API
+# معلومات OAuth2 من AliExpress
+CLIENT_ID = os.getenv("ALIEXPRESS_CLIENT_ID")
+CLIENT_SECRET = os.getenv("ALIEXPRESS_CLIENT_SECRET")
+REDIRECT_URI = os.getenv("CALLBACK_URL")  # يجب أن يكون متطابقًا مع AliExpress API Console
 
-if not TELEGRAM_TOKEN or not ALIEXPRESS_APP_KEY or not ALIEXPRESS_APP_SECRET or not ALIEXPRESS_API_URL:
-    raise ValueError("❌ تأكد من تعيين جميع المتغيرات البيئية المطلوبة!")
+# استبدال هذا بقناة تيلغرام الخاصة بك
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 🔹 إنشاء تطبيق Telegram
-app_telegram = Application.builder().token(TELEGRAM_TOKEN).build()
 
-# 🔹 دالة بدء البوت
-async def start(update: Update, context: CallbackContext):
-    await update.message.reply_text("مرحباً! أرسل لي رابط منتج من AliExpress وسأرسل لك تفاصيله.")
+# ✅ 1️⃣ مسار الصفحة الرئيسية
+@app.route('/')
+def home():
+    return "AliExpress Telegram Bot is running!", 200
 
-# 🔹 دالة إنشاء التوقيع (لحماية الطلبات المرسلة إلى AliExpress API)
-def generate_signature(params, app_secret, api_name=None):
-    sorted_params = sorted(params.items())
-    query_string = "".join(f"{k}{v}" for k, v in sorted_params)
-    if api_name:
-        query_string = api_name + query_string
-    signature = hmac.new(
-        app_secret.encode("utf-8"),
-        query_string.encode("utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-    return signature
 
-# 🔹 دالة جلب بيانات المنتج من AliExpress API
-async def fetch_aliexpress_product(url):
-    params = {
-        "app_key": ALIEXPRESS_APP_KEY,
-        "timestamp": int(time.time() * 1000),  # تحويل الوقت إلى milliseconds
-        "product_url": url
+# ✅ 2️⃣ مسار التحقق من AliExpress OAuth2
+@app.route('/callback', methods=['GET', 'POST'])
+def handle_callback():
+    if request.method == 'GET':
+        # ✅ استقبال رمز التفويض (Authorization Code)
+        auth_code = request.args.get('code')
+        if not auth_code:
+            return jsonify({"error": "No auth code received"}), 400
+        
+        # ✅ استبدال رمز التفويض بـ Access Token
+        token_url = "https://auth.aliexpress.com/token"
+        data = {
+            "grant_type": "authorization_code",
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "redirect_uri": REDIRECT_URI,
+            "code": auth_code
+        }
+        
+        response = requests.post(token_url, data=data)
+        token_data = response.json()
+        
+        if "access_token" in token_data:
+            access_token = token_data["access_token"]
+            return jsonify({"access_token": access_token}), 200
+        else:
+            return jsonify({"error": "Failed to get access token", "details": token_data}), 400
+
+    elif request.method == 'POST':
+        # ✅ استقبال بيانات Callback من AliExpress
+        data = request.json
+        print("🔹 Callback Data Received:", json.dumps(data, indent=4))
+        return jsonify({"status": "success"}), 200
+
+
+# ✅ 3️⃣ إرسال رسالة إلى تيلغرام
+def send_to_telegram(message):
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
     }
-    params["sign"] = generate_signature(params, ALIEXPRESS_APP_SECRET)
-    response = requests.get(ALIEXPRESS_API_URL, params=params)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        return None
+    requests.post(telegram_url, json=payload)
 
-# 🔹 دالة استقبال رسائل المستخدم على البوت
-async def handle_message(update: Update, context: CallbackContext):
-    product_url = update.message.text.strip()
-    if "aliexpress.com" not in product_url:
-        await update.message.reply_text("❌ يرجى إرسال رابط منتج صحيح من AliExpress.")
-        return
-    product_data = await fetch_aliexpress_product(product_url)
-    if product_data:
-        reply_text = (
-            f"📌 المنتج: {product_data.get('name', 'غير متوفر')}\n"
-            f"💰 السعر: {product_data.get('price', 'غير متوفر')}\n"
-            f"🔻 التخفيض: {product_data.get('discount', 'غير متوفر')}\n"
-            f"🔗 رابط المنتج: {product_data.get('url', product_url)}"
-        )
-    else:
-        reply_text = "❌ لم أتمكن من العثور على تفاصيل المنتج."
-    await update.message.reply_text(reply_text)
 
-# 🔹 إعداد Webhook لـ Telegram
-@app.route(f"/{TELEGRAM_TOKEN}", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    update = Update.de_json(data, app_telegram.bot)
-    app_telegram.update_queue.put(update)
-    return "OK", 200
-
-# 🔹 **إضافة Callback URL لـ AliExpress API**
-@app.route("/callback", methods=["POST"])
-def aliexpress_callback():
-    """ استقبال ردود AliExpress API """
-    try:
-        data = request.get_json()  # استلام البيانات القادمة من AliExpress
-        print("📩 Received Callback:", data)  # طباعة البيانات في السجل
-        return jsonify({"status": "success"}), 200  # إرجاع استجابة ناجحة
-    except Exception as e:
-        print("❌ Error in Callback:", str(e))
-        return jsonify({"status": "error", "message": str(e)}), 400
-
-# 🔹 إضافة الأوامر إلى البوت
-app_telegram.add_handler(CommandHandler("start", start))
-app_telegram.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# 🔹 تشغيل السيرفر
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+# ✅ 4️⃣ تشغيل التطبيق
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
