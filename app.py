@@ -1,66 +1,62 @@
-from flask import Flask, request, jsonify
-import logging
+from flask import Flask, request, jsonify, redirect
 import requests
+import os
 
-# تهيئة Flask
 app = Flask(__name__)
 
-# تفعيل تسجيل الأخطاء لمساعدتك في اكتشاف المشاكل
-logging.basicConfig(level=logging.INFO)
+# إعداد متغيرات البيئة (يجب ضبطها في Render)
+CLIENT_ID = os.getenv("CLIENT_ID", "509112")  # استبدل بالـ APP KEY الخاص بك
+CLIENT_SECRET = os.getenv("CLIENT_SECRET", "YOUR_SECRET")  # استبدل بالـ SECRET KEY الخاص بك
+REDIRECT_URI = os.getenv("REDIRECT_URI", "https://aliexpress-telegram-bot-hgx4.onrender.com/callback")
 
-# بيانات التطبيق من AliExpress API Console
-ALIEXPRESS_CLIENT_ID = "ضع_client_id_هنا"
-ALIEXPRESS_CLIENT_SECRET = "ضع_client_secret_هنا"
-ALIEXPRESS_REDIRECT_URI = "https://aliexpress-telegram-bot-hgx4.onrender.com/callback"
+ACCESS_TOKEN = None  # سيتم تخزين التوكن هنا
 
-# دالة للحصول على رمز الوصول (Access Token) من AliExpress
-def get_access_token(auth_code):
-    url = "https://oauth.aliexpress.com/token"
-    data = {
-        "grant_type": "authorization_code",
-        "client_id": ALIEXPRESS_CLIENT_ID,
-        "client_secret": ALIEXPRESS_CLIENT_SECRET,
-        "code": auth_code,
-        "redirect_uri": ALIEXPRESS_REDIRECT_URI
-    }
-    
-    response = requests.post(url, data=data)
-    return response.json()
-
-# الصفحة الرئيسية للتحقق من أن البوت يعمل
+# ✅ الصفحة الرئيسية (اختياري)
 @app.route('/')
 def home():
-    return "AliExpress Telegram Bot is running!"
+    return "AliExpress Telegram Bot is Running!"
 
-# ✅ استلام كود التحقق من AliExpress OAuth
-@app.route('/callback', methods=['GET', 'POST'])
+# ✅ الخطوة 1: توجيه المستخدم إلى رابط المصادقة
+@app.route('/authorize')
+def authorize():
+    auth_url = f"https://auth.aliexpress.com/oauth2/authorize?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&state=1234"
+    return redirect(auth_url)
+
+# ✅ الخطوة 2: استقبال `auth_code` عند إعادة التوجيه من AliExpress
+@app.route('/callback')
 def callback():
-    # الحصول على كود التحقق من الطلب
-    auth_code = request.args.get('auth_code') or request.form.get('auth_code')
-    
+    global ACCESS_TOKEN
+    auth_code = request.args.get('code')
+
     if not auth_code:
-        logging.error("❌ No auth code received")
-        return jsonify({"error": "No auth code received"}), 400
-    
-    logging.info(f"✅ Received auth_code: {auth_code}")
-    
-    # الحصول على رمز الوصول باستخدام كود التحقق
-    token_response = get_access_token(auth_code)
-    
-    # إرجاع الاستجابة
-    return jsonify({"status": "success", "auth_code": auth_code, "token_response": token_response})
+        return jsonify({"error": "No auth code received"})
 
-# ✅ استقبال Webhooks من AliExpress
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.json
-    if not data:
-        logging.error("❌ No data received in webhook")
-        return jsonify({"error": "No data received"}), 400
+    # ✅ الخطوة 3: طلب `access_token` باستخدام `auth_code`
+    token_url = "https://api-sg.aliexpress.com/sync"
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "code": auth_code,
+        "redirect_uri": REDIRECT_URI
+    }
+    
+    response = requests.post(token_url, data=data)
+    
+    if response.status_code == 200:
+        token_data = response.json()
+        ACCESS_TOKEN = token_data.get("access_token")
+        return jsonify({"auth_code": auth_code, "access_token": ACCESS_TOKEN, "status": "success"})
+    else:
+        return jsonify({"error": "Failed to retrieve access_token", "details": response.text})
 
-    logging.info(f"📩 Webhook received: {data}")
-    return jsonify({"status": "received", "data": data})
+# ✅ فحص التوكن الحالي
+@app.route('/token')
+def get_token():
+    if ACCESS_TOKEN:
+        return jsonify({"access_token": ACCESS_TOKEN})
+    return jsonify({"error": "No access token available"})
 
-# تشغيل السيرفر
+# ✅ تشغيل التطبيق على Render
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
