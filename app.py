@@ -90,3 +90,12 @@ def get_access_token(auth_code):
     
     response = requests.post(url, data=data)
     return response.json()
+@app.route('/callback', methods=['GET', 'POST'])
+def callback():
+    auth_code = request.args.get('auth_code')
+    
+    if not auth_code:
+        return jsonify({"error": "No auth code received"}), 400
+
+    token_response = get_access_token(auth_code)
+    return jsonify(token_response)
