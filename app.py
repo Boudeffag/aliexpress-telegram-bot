@@ -60,3 +60,17 @@ def get_token():
 # ✅ تشغيل التطبيق على Render
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+from flask import Flask, redirect, request, jsonify
+
+app = Flask(__name__)
+
+CLIENT_ID = "509112"  # ضع هنا الـ CLIENT_ID الصحيح
+REDIRECT_URI = "https://aliexpress-telegram-bot-hgx4.onrender.com/callback"
+
+@app.route("/authorize")
+def authorize():
+    auth_url = f"https://auth.aliexpress.com/oauth2/authorize?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&state=1234"
+    return redirect(auth_url)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
