@@ -99,3 +99,22 @@ def callback():
 
     token_response = get_access_token(auth_code)
     return jsonify(token_response)
+import requests
+
+# بيانات التطبيق من AliExpress API Console
+ALIEXPRESS_CLIENT_ID = "ضع_client_id_هنا"
+ALIEXPRESS_CLIENT_SECRET = "ضع_client_secret_هنا"
+ALIEXPRESS_REDIRECT_URI = "https://aliexpress-telegram-bot-hgx4.onrender.com/callback"
+
+def get_access_token(auth_code):
+    url = "https://oauth.aliexpress.com/token"
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": ALIEXPRESS_CLIENT_ID,
+        "client_secret": ALIEXPRESS_CLIENT_SECRET,
+        "code": auth_code,
+        "redirect_uri": ALIEXPRESS_REDIRECT_URI
+    }
+    
+    response = requests.post(url, data=data)
+    return response.json()
