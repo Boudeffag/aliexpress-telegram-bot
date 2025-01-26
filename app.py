@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 # إعداد متغيرات البيئة (يجب ضبطها في Render)
 CLIENT_ID = os.getenv("CLIENT_ID", "509112")  # استبدل بالـ APP KEY الخاص بك
-CLIENT_SECRET = os.getenv("CLIENT_SECRET", "YOUR_SECRET")  # استبدل بالـ SECRET KEY الخاص بك
+CLIENT_SECRET = os.getenv("CLIENT_SECRET", "UOXRatcL8CkX5d4ruigBcOWI7RObnkPz")  # استبدل بالـ SECRET KEY الخاص بك
 REDIRECT_URI = os.getenv("REDIRECT_URI", "https://aliexpress-telegram-bot-hgx4.onrender.com/callback")
 
 ACCESS_TOKEN = None  # سيتم تخزين التوكن هنا
