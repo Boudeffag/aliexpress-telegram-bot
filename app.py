@@ -74,3 +74,19 @@ def send_to_telegram(message):
 # ✅ 4️⃣ تشغيل التطبيق
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/callback', methods=['GET'])
+def callback():
+    auth_code = request.args.get('auth_code')
+    
+    if not auth_code:
+        return jsonify({"error": "No auth code received"}), 400
+    
+    # يمكنك هنا إرسال auth_code إلى API AliExpress لمتابعة المصادقة
+    return jsonify({"status": "success", "auth_code": auth_code}), 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
