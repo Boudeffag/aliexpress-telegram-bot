@@ -61,3 +61,16 @@ def callback():
     
     token_response = get_access_token(auth_code)
     return jsonify(token_response)
+from flask import Flask, request, jsonify
+import requests
+
+app = Flask(__name__)
+
+@app.route('/callback', methods=['GET', 'POST'])
+def callback():
+    auth_code = request.args.get('auth_code')
+    
+    if not auth_code:
+        return jsonify({"error": "No auth code received"}), 400
+
+    return jsonify({"auth_code": auth_code, "status": "success"})
